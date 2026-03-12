@@ -26,24 +26,89 @@ std::vector<std::vector<int>> edge_list;
 
 void build_adj_matrix()
 {
-    
+    // (1) allocate matrix adj of appropriate size
+    adj.assign(total_nodes, vector<int>(total_nodes, 0));
+
+    // (2) run through edge list and populate adj
+    for (int i = 0; i < edge_list.size(); i++)
+    {
+        int source = edge_list[i][0];
+        int target = edge_list[i][1];
+        adj[source][target] = 1;
+    }
 }
 
 double calculate_fraction_of_ones()
 {
-   
+    // (3) Calculate the fraction of nodes with opinion 1 and return it.
+    int count_ones = 0;
+
+    for (int i = 0; i < opinions.size(); i++)
+    {
+        if (opinions[i] == 1)
+        {
+            count_ones++;
+        }
+    }
+
+    return (double)count_ones / total_nodes;
 }
 
 // For a given node, count majority opinion among its neighbours. Tie -> 0.
 int get_majority_friend_opinions(int node)
 {
+    // (4) Count the number of neighbours with opinion 0 and opinion 1.
+    // Return the majority (0 or 1). If tie, return 0.
 
+    int count_0 = 0;
+    int count_1 = 0;
+
+    // 谁 influences node，就看 adj[i][node]
+    for (int i = 0; i < total_nodes; i++)
+    {
+        if (adj[i][node] == 1)
+        {
+            if (opinions[i] == 0)
+            {
+                count_0++;
+            }
+            else
+            {
+                count_1++;
+            }
+        }
+    }
+
+    if (count_1 > count_0)
+    {
+        return 1;
+    }
+
+    return 0; // tie 或 0 更多时都返回 0
 }
 
 // Calculate new opinions for all voters and return if anyone's opinion changed
 bool update_opinions()
 {
+    // (5) For each node, calculate the majority opinion among its neighbours
+    // and update the node's opinion.
+    // Return true if any node's opinion changed, false otherwise.
 
+    vector<int> new_opinions = opinions;
+    bool changed = false;
+
+    for (int i = 0; i < total_nodes; i++)
+    {
+        new_opinions[i] = get_majority_friend_opinions(i);
+
+        if (new_opinions[i] != opinions[i])
+        {
+            changed = true;
+        }
+    }
+
+    opinions = new_opinions;
+    return changed;
 }
 
 int main() {
@@ -68,9 +133,24 @@ int main() {
          << calculate_fraction_of_ones() << endl;
     
     /// (6)  //////////////////////////////////////////////
-    
+    while (iteration < max_iterations && opinions_changed)
+    {
+        double current_fraction = calculate_fraction_of_ones();
 
+        // stop if consensus already reached
+        if (current_fraction == 0.0 || current_fraction == 1.0)
+        {
+            break;
+        }
+
+        opinions_changed = update_opinions();
+        iteration++;
+
+        cout << "Iteration " << iteration << ": fraction of 1's = "
+             << calculate_fraction_of_ones() << endl;
+    }
     ////////////////////////////////////////////////////////
+    
     // Print final result
     double final_fraction = calculate_fraction_of_ones();
     cout << "Iteration " << iteration << ": fraction of 1's = " 
