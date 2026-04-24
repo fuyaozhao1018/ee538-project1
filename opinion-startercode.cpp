@@ -1,57 +1,57 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <algorithm>
 using namespace std;
 
 /********************DO NOT EDIT**********************/
 // Function prototype. Defined later.
 void read_opinions(string filename); // reads file into opinions vector and updates total_nodes as needed
-void read_edges(string filename); // reads file into edge_list, defined later
-void build_adj_matrix(); // convert edge_list to adjacency matrix
+void read_edges(string filename); // reads file into sparse incoming-neighbour lists
+void build_adj_matrix(); // finalize adjacency list
 
 int total_nodes = 0; // We keep track of the total number of nodes based on largest node id.
 
 
 /****************************************************************/
 
-/******** Create adjacency matrix and vector of opinions */
+/******** Create sparse adjacency list and vector of opinions */
 // simple vector to hold each node's opinion (0 or 1)
 std::vector<int> opinions;
 
-// global adjacency matrix initialized later
-std::vector<std::vector<int>> adj;
+// in_neighbors[target] contains the nodes that influence target.
+// This sparse representation uses O(V + E) space instead of O(V^2).
+std::vector<std::vector<int>> in_neighbors;
 
-// edge list: each row contains {source, target}
-std::vector<std::vector<int>> edge_list;
+int ones = 0;
 
 void build_adj_matrix()
 {
-    // (1) allocate matrix adj of appropriate size
-    adj.assign(total_nodes, vector<int>(total_nodes, 0));
-
-    // (2) run through edge list and populate adj
-    for (int i = 0; i < edge_list.size(); i++)
+    // (1) make sure all nodes have an adjacency-list slot
+    if ((int)in_neighbors.size() < total_nodes)
     {
-        int source = edge_list[i][0];
-        int target = edge_list[i][1];
-        adj[source][target] = 1;
+        in_neighbors.resize(total_nodes);
+    }
+
+    // (2) match adjacency-matrix semantics: duplicate edges should count once.
+    for (size_t i = 0; i < in_neighbors.size(); i++)
+    {
+        sort(in_neighbors[i].begin(), in_neighbors[i].end());
+        in_neighbors[i].erase(
+            unique(in_neighbors[i].begin(), in_neighbors[i].end()),
+            in_neighbors[i].end());
     }
 }
 
 double calculate_fraction_of_ones()
 {
     // (3) Calculate the fraction of nodes with opinion 1 and return it.
-    int count_ones = 0;
-
-    for (int i = 0; i < opinions.size(); i++)
+    if (total_nodes == 0)
     {
-        if (opinions[i] == 1)
-        {
-            count_ones++;
-        }
+        return 0.0;
     }
 
-    return (double)count_ones / total_nodes;
+    return (double)ones / total_nodes;
 }
 
 // For a given node, count majority opinion among its neighbours. Tie -> 0.
@@ -60,31 +60,28 @@ int get_majority_friend_opinions(int node)
     // (4) Count the number of neighbours with opinion 0 and opinion 1.
     // Return the majority (0 or 1). If tie, return 0.
 
-    int count_0 = 0;
-    int count_1 = 0;
+    int zeros = 0;
+    int ones = 0;
 
-    // 谁 influences node，就看 adj[i][node]
-    for (int i = 0; i < total_nodes; i++)
+    for (size_t i = 0; i < in_neighbors[node].size(); i++)
     {
-        if (adj[i][node] == 1)
+        int nbr = in_neighbors[node][i];
+        if (opinions[nbr] == 0)
         {
-            if (opinions[i] == 0)
-            {
-                count_0++;
-            }
-            else
-            {
-                count_1++;
-            }
+            zeros++;
+        }
+        else
+        {
+            ones++;
         }
     }
 
-    if (count_1 > count_0)
+    if (ones > zeros)
     {
         return 1;
     }
 
-    return 0; // tie 或 0 更多时都返回 0
+    return 0; // return 0 for ties or when 0 is the majority
 }
 
 // Calculate new opinions for all voters and return if anyone's opinion changed
@@ -94,20 +91,26 @@ bool update_opinions()
     // and update the node's opinion.
     // Return true if any node's opinion changed, false otherwise.
 
-    vector<int> new_opinions = opinions;
+    vector<int> next = opinions;
     bool changed = false;
+    int next_ones = 0;
 
     for (int i = 0; i < total_nodes; i++)
     {
-        new_opinions[i] = get_majority_friend_opinions(i);
+        next[i] = get_majority_friend_opinions(i);
+        if (next[i] == 1)
+        {
+            next_ones++;
+        }
 
-        if (new_opinions[i] != opinions[i])
+        if (next[i] != opinions[i])
         {
             changed = true;
         }
     }
 
-    opinions = new_opinions;
+    opinions = next;
+    ones = next_ones;
     return changed;
 }
 
@@ -118,7 +121,7 @@ int main() {
     read_opinions("opinions.txt"); 
     read_edges("edge_list.txt");
 
-    // convert edge list into adjacency matrix once we know total_nodes
+    // finalize sparse adjacency structure once we know total_nodes
     build_adj_matrix();
     
     cout << "Total nodes: " << total_nodes << endl;
@@ -176,13 +179,17 @@ void read_opinions(string filename)
     int id, opinion;
     while(file >> id >> opinion)
     {
-        opinions.push_back(opinion);
         if(id >= total_nodes) total_nodes = id+1;
+        if(id >= (int)opinions.size()) opinions.resize(id + 1, 0);
+
+        if(opinions[id] == 1) ones--;
+        opinions[id] = opinion;
+        if(opinion == 1) ones++;
     }
     file.close();
 }
 
-// Read edge list from file and update total nodes as needed.
+// Read edges from file and update total nodes as needed.
 void read_edges(string filename)
 {
     ifstream file(filename);
@@ -190,10 +197,13 @@ void read_edges(string filename)
     
     while(file >> source >> target)
     {
-        edge_list.push_back({source, target});
         if(source >= total_nodes) total_nodes = source+1;
         if(target >= total_nodes) total_nodes = target+1;
+        if(target >= (int)in_neighbors.size()) in_neighbors.resize(target + 1);
+
+        in_neighbors[target].push_back(source);
     }
+    if((int)opinions.size() < total_nodes) opinions.resize(total_nodes, 0);
     file.close();
 }
 
